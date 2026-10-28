@@ -1,88 +1,71 @@
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("kotlin-parcelize")
-}
+AutoMarkQuickShare/
+├── app/
+│   ├── build.gradle.kts
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── assets/
+│       │   ├── logo_default.png
+│       │   └── offline_cities_bbox.json
+│       └── java/com/automark/quickshare/
+│           ├── domain/
+│           │   └── model/
+│           │       ├── MediaCaptureEvent.kt
+│           │       └── WatermarkTemplate.kt
+│           ├── data/
+│           │   ├── preferences/
+│           │   │   └── WatermarkTemplateRepository.kt
+│           │   ├── location/
+│           │   │   └── OfflineGeolocationManager.kt
+│           │   └── media/
+│           │       ├── UniversalMediaContentObserver.kt
+│           │       └── WatermarkRenderer.kt
+│           ├── service/
+│           │   ├── AutoMarkWatcherService.kt
+│           │   ├── QuickShareNotificationHelper.kt
+│           │   └── OemBackgroundKillerHelper.kt
+│           └── ui/
+│               └── MainActivity.kt
 
-android {
-    namespace = "com.automark.quickshare"
-    compileSdk = 35
 
-    defaultConfig {
-        applicationId = "com.automark.quickshare"
-        minSdk = 26 // Android 8.0 Oreo (Oppo Reno 7, seri lama, hingga Android 15 terbaru)
-        targetSdk = 35 // Android 15 (Oppo Reno 13, Reno 14 5G, OneUI 7, HyperOS)
-        versionCode = 1
-        versionName = "1.0.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
+Layer & Modul
 
-    buildTypes {
-        release {
-            isMinifyEnabled = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
+Komponen Utama
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+Spesifikasi Teknis & Kompatibilitas API 26–35
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+Media Watcher
 
-    buildFeatures {
-        compose = true
-    }
+UniversalMediaContentObserver.kt
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.15"
-    }
-}
+Memantau MediaStore.Images & MediaStore.Video via ContentObserver, debounce delay 700 ms (rentang 500–1000 ms), validasi ukuran byte konstan untuk mencegah IO write lock, serta filter anti-loop (DCIM/AutoMark dan prefix AutoMark_).
 
-dependencies {
-    val media3Version = "1.5.0"
-    val coroutinesVersion = "1.9.0"
+Watermark Engine (Foto)
 
-    // Core AndroidX, Lifecycle Service & DataStore Preferences
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-service:2.8.7")
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+WatermarkRenderer.kt
 
-    // Jetpack Compose (Material 3) untuk UI Custom Template Builder
-    implementation(platform("androidx.compose:compose-bom:2024.10.00"))
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui-tooling-preview")
+Dekode & kanvas Bitmap.Config.ARGB_8888 berpresisi proporsional (12 MP, 50 MP, 64 MP, hingga 108 MP pada rasio 1:1, 4:3, 16:9, 9:16), penyalinan penuh tag ExifInterface, serta penyimpanan kompatibel ganda (RELATIVE_PATH + IS_PENDING di API 29+ dan File + MediaScannerConnection di API 26–28).
 
-    // Coroutines untuk Asynchronous IO, Debouncing, dan Queue Processing
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:$coroutinesVersion")
+Watermark Engine (Video)
 
-    // AndroidX ExifInterface untuk duplikasi metadata EXIF & ekstraksi GPS
-    implementation("androidx.exifinterface:exifinterface:1.3.7")
+WatermarkRenderer.kt
 
-    // AndroidX Media3 Transformer & Effect untuk Hardware-Accelerated Video Watermarking (30/60 FPS)
-    implementation("androidx.media3:media3-transformer:$media3Version")
-    implementation("androidx.media3:media3-effect:$media3Version")
-    implementation("androidx.media3:media3-common:$media3Version")
-    implementation("androidx.media3:media3-muxer:$media3Version")
+Pipeline OpenGL/GPU hardware-accelerated via AndroidX Media3 Transformer dan OverlayEffect (BitmapOverlay + StaticOverlaySettings) yang menjaga resolusi dan framerate asli (30/60 FPS).
 
-    // Google Play Services Location untuk fallback Last Known Location secara pasif/offline
-    implementation("com.google.android.gms:play-services-location:21.3.0")
+Offline Geolocation
 
-    // SQLite KTX untuk Offline Reverse Geocoding Database
-    implementation("androidx.sqlite:sqlite-ktx:2.4.0")
-    implementation("androidx.sqlite:sqlite-framework:2.4.0")
-}
+OfflineGeolocationManager.kt
 
+Ekstraksi GPS dari EXIF foto/video dengan fallback pasif ke FusedLocationProviderClient.getLastLocation() & LocationManager, dipetakan ke nama kota/kabupaten melalui SQLiteDatabase bounding-box + rumus Haversine 100% offline.
+
+Template & Custom Builder
+
+WatermarkTemplate.kt & WatermarkTemplateRepository.kt
+
+data class WatermarkTemplate dengan serialisasi JSON (org.json.JSONObject) ke DataStore / SharedPreferences, mencakup 4 preset bawaan (Minimalist Corner, Modern Pill / Badge, Flagship / Studio Footer, Cinematic Letterbox) dan Custom Builder (TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, BOTTOM_BANNER).
+
+Service, OEM Helper & Quick Share
+
+AutoMarkWatcherService.kt, QuickShareNotificationHelper.kt, OemBackgroundKillerHelper.kt
+
+Foreground Service persisten, panduan Intent Auto-Launch / Battery Saver untuk ColorOS (Oppo/Realme), MIUI/HyperOS (Xiaomi), dan OneUI (Samsung), serta Heads-Up Notification (NotificationCompat) untuk kirim instan ke IG Stories, WhatsApp, dan TikTok.
